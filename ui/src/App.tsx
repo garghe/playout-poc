@@ -37,7 +37,10 @@ export default function App() {
         {state?.fallback && <span className="mode mode-fallback">FALLBACK</span>}
         <div className="spacer" />
         {alarmCount > 0 && <span className="alarm-pill">⚠ {alarmCount} alarm{alarmCount > 1 ? "s" : ""}</span>}
-        <span className={`conn ${connected ? "ok" : "bad"}`}>{connected ? "● connected" : "○ reconnecting…"}</span>
+        <span className={`conn ${connected ? "ok" : "bad"}`}
+          title={connected ? "live updates over WebSocket" : "WebSocket unavailable: polling the API every second (no preview)"}>
+          {connected ? "● connected" : state ? "○ polling (no live preview)" : "○ connecting…"}
+        </span>
         <div className="clock mono" title={state?.tz}>{clock(now, state?.tz ?? "Europe/London", true)}</div>
       </header>
 

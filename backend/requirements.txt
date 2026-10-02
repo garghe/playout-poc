@@ -2,6 +2,7 @@
 # python3-gst-1.0 / gir1.2-gst-plugins-bad-1.0, ffmpeg. See README.
 fastapi>=0.110
 uvicorn>=0.29
+websockets>=12   # WebSocket support for uvicorn (do NOT use uvicorn[standard]: uvloop breaks GStreamer)
 python-multipart>=0.0.9
 numpy>=1.26
 scipy>=1.11

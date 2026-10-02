@@ -83,9 +83,33 @@ export function usePlayout() {
       };
     };
     connect();
+
+    // Fallback: if the WebSocket is down, poll the REST API so the UI still works
+    // (no preview frames or live log in this mode).
+    let lastSeq = 0;
+    const poll = window.setInterval(async () => {
+      if (ws && ws.readyState === WebSocket.OPEN) return;
+      try {
+        const s: State = await (await fetch("/api/state")).json();
+        if (s && s.now) {
+          setState(s);
+          if (s.meters) setMeters(s.meters);
+          setClockOffset(s.now - Date.now() / 1000);
+        }
+        const l: LogEvent[] = await (await fetch("/api/log?n=200")).json();
+        if (l.length && l[l.length - 1].seq !== lastSeq) {
+          lastSeq = l[l.length - 1].seq;
+          setLog(l);
+        }
+      } catch {
+        /* backend unreachable */
+      }
+    }, 1000);
+
     return () => {
       stop = true;
       window.clearTimeout(retry);
+      window.clearInterval(poll);
       ws?.close();
     };
   }, []);
