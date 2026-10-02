@@ -36,6 +36,7 @@ export interface Countdown {
   source: "playlist" | "manual";
   action?: string;
   fired?: boolean;
+  paused?: boolean;   // timeline can't advance (live override / hold): value is frozen
 }
 
 export interface Alarm {
@@ -102,6 +103,7 @@ export interface State {
   checks: Check[];
   meters: Meters;
   live_inputs: string[];
+  tech_slate: { since: number; text: string } | null;
   stats: {
     output: {
       clients: number;

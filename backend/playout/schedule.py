@@ -66,7 +66,7 @@ def countdowns(events: list[Event], slots: list[Slot | None], now: float) -> lis
     nb = next_by(events, slots, now, lambda e: e.kind == "spot" and e.break_first)
     if nb:
         e, at = nb
-        out.append({"key": "break", "label": f"Next break: {e.break_title}", "category": "break",
+        out.append({"key": "break", "label": f"Next break: {e.break_title}", "category": "break", "uid": e.uid,
                     "at": at, "source": "playlist"})
     cats = []
     for e in events:
@@ -76,13 +76,13 @@ def countdowns(events: list[Event], slots: list[Slot | None], now: float) -> lis
         r = next_by(events, slots, now, lambda e, c=c: e.category == c and e.kind != "spot")
         if r:
             e, at = r
-            out.append({"key": f"cat:{c}", "label": f"Next {c}: {e.title}", "category": c,
+            out.append({"key": f"cat:{c}", "label": f"Next {c}: {e.title}", "category": c, "uid": e.uid,
                         "at": at, "source": "playlist"})
     if any(e.kind == "live" for e in events):
         r = next_by(events, slots, now, lambda e: e.kind == "live")
         if r:
             e, at = r
-            out.append({"key": "live", "label": f"Next live: {e.title}", "category": "live",
+            out.append({"key": "live", "label": f"Next live: {e.title}", "category": "live", "uid": e.uid,
                         "at": at, "source": "playlist"})
     return out
 

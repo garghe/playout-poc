@@ -100,7 +100,7 @@ class Source:
 
     def _on_audio(self, sink) -> Gst.FlowReturn:
         sample = sink.emit("pull-sample")
-        if sample is not None and ROUTER.active is self:
+        if sample is not None and ROUTER.on_air is self:
             buf = sample.get_buffer()
             ok, m = buf.map(Gst.MapFlags.READ)
             if ok:
@@ -258,7 +258,8 @@ class LiveSource(Source):
 
     def _on_pad(self, _dec, pad: Gst.Pad) -> None:
         media = (pad.get_current_caps() or pad.query_caps(None)).get_structure(0).get_name()
-        chain = self._add_chain(media, sync=False)
+        # sync=True: frames are released on their timestamps (smooth), not in network bursts
+        chain = self._add_chain(media, sync=True)
         if chain is not None:
             pad.link(chain.get_static_pad("sink"))
             self.notify("SRT-IN", f"{self.name}: {media.split('/')[0]} stream decoded", "info")
@@ -304,9 +305,9 @@ class SlateSource(Source):
         desc = (
             "videotestsrc is-live=true pattern=smpte100 ! "
             f"video/x-raw,width={CONFIG.width},height={CONFIG.height},framerate={CONFIG.fps}/1 ! "
-            "textoverlay name=txt text=\"We'll be right back\" font-desc=\"Sans Bold 48\" "
+            "textoverlay name=txt text=\"We'll be right back\" font-desc=\"Sans Bold 28\" "
             "valignment=center halignment=center shaded-background=true ! "
-            "clockoverlay time-format=\"%H:%M:%S\" font-desc=\"Sans 28\" valignment=bottom halignment=right ! "
+            "clockoverlay time-format=\"%H:%M:%S\" font-desc=\"Sans 14\" valignment=bottom halignment=right ! "
             f"videoconvert ! {VIDEO_CAPS} ! appsink name=v sync=false emit-signals=true max-buffers=2 drop=true "
             f"audiotestsrc is-live=true wave=silence samplesperbuffer=960 ! audioconvert ! {AUDIO_CAPS} ! "
             "appsink name=a sync=false emit-signals=true max-buffers=4 drop=true"
@@ -319,6 +320,50 @@ class SlateSource(Source):
 
     def set_caption(self, text: str) -> None:
         self._txt.set_property("text", text)
+
+    def start(self) -> None:
+        self.pipeline.set_state(Gst.State.PLAYING)
+
+
+class TechSlateSource(Source):
+    """Emergency "technical difficulties" slate. Runs all the time so it can be
+    put on air instantly; uses the router override so it beats automation."""
+    kind = "tech"
+    DEFAULT_TEXT = "We are experiencing technical difficulties"
+    DEFAULT_SUB = "Please stay tuned"
+
+    def __init__(self, notify: Notify) -> None:
+        super().__init__("TECH-SLATE", notify)
+        desc = (
+            f"videotestsrc is-live=true pattern=solid-color foreground-color=0xff101418 ! "
+            f"video/x-raw,width={CONFIG.width},height={CONFIG.height},framerate={CONFIG.fps}/1 ! "
+            f"textoverlay name=txt text=\"{self.DEFAULT_TEXT}\" font-desc=\"Sans Bold 30\" "
+            "valignment=position halignment=center ypos=0.40 line-alignment=center ! "
+            f"textoverlay name=sub text=\"{self.DEFAULT_SUB}\" font-desc=\"Sans 18\" "
+            "valignment=position halignment=center ypos=0.56 color=0xffc8ccd2 ! "
+            "clockoverlay time-format=\"%H:%M\" font-desc=\"Sans 14\" valignment=bottom halignment=right ! "
+            f"videoconvert ! {VIDEO_CAPS} ! appsink name=v sync=false emit-signals=true max-buffers=2 drop=true "
+            f"audiotestsrc is-live=true wave=silence samplesperbuffer=960 ! audioconvert ! {AUDIO_CAPS} ! "
+            "appsink name=a sync=false emit-signals=true max-buffers=4 drop=true"
+        )
+        self.pipeline = Gst.parse_launch(desc)
+        self._attach_sink(self.pipeline.get_by_name("v"), True)
+        self._attach_sink(self.pipeline.get_by_name("a"), False)
+        self._txt = self.pipeline.get_by_name("txt")
+        self._sub = self.pipeline.get_by_name("sub")
+        self._watch_bus()
+
+    @property
+    def on_air(self) -> bool:
+        return ROUTER.override is self
+
+    def set_on_air(self, on: bool, text: str | None = None, sub: str | None = None) -> None:
+        if on:
+            self._txt.set_property("text", text or self.DEFAULT_TEXT)
+            self._sub.set_property("text", self.DEFAULT_SUB if sub is None else sub)
+            ROUTER.set_override(self)
+        elif ROUTER.override is self:
+            ROUTER.set_override(None)
 
     def start(self) -> None:
         self.pipeline.set_state(Gst.State.PLAYING)

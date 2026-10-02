@@ -19,7 +19,7 @@ from ..eventlog import EventLog
 from ..playlist import Event, Playlist, fmt_tc
 from .gst import GLib, check_elements
 from .output import Output
-from .sources import FileSource, LiveSource, SlateSource, Source
+from .sources import FileSource, LiveSource, SlateSource, Source, TechSlateSource
 
 TICK_MS = 20
 DEFAULT_LIVE_NAME = "LIVE-1"
@@ -65,6 +65,9 @@ class Engine:
         check_elements()
         self.output = Output(self._notify)
         self.slate = SlateSource(self._notify)
+        self.tech = TechSlateSource(self._notify)
+        self.tech_since: float | None = None
+        self.tech_text: str | None = None
         self.lives: dict[str, LiveSource] = {}
 
     # ------------------------------------------------------------------ infra
@@ -80,6 +83,7 @@ class Engine:
     def _boot(self) -> None:
         self.output.start()
         self.slate.start()
+        self.tech.start()
         self._slate_on("Off air - automation stopped")
         self._ensure_live(CONFIG.default_live, DEFAULT_LIVE_NAME)
         for uri in CONFIG.extra_live:
@@ -107,7 +111,7 @@ class Engine:
 
     def shutdown(self) -> None:
         def stop():
-            for s in [*self.prerolled.values(), *self.lives.values(), self.slate]:
+            for s in [*self.prerolled.values(), *self.lives.values(), self.slate, self.tech]:
                 s.destroy()
             if isinstance(self.cur_src, FileSource):
                 self.cur_src.destroy()
@@ -580,8 +584,22 @@ class Engine:
         for c in self.manual_cds:
             cds.append({"key": c["id"], "label": c["label"], "category": c["category"], "at": c["at"],
                         "source": "manual", "action": c["action"], "fired": c["fired"]})
+        # While nothing can advance the timeline (live override, hold past the item's end),
+        # follow-on items are projected from "now" and slide with the clock. Mark their
+        # countdowns as paused so the UI shows a frozen value instead of a flickering one.
+        cur_end = self._cur_end()
+        frozen = self.mode == "live" or (self.mode == "hold" and (cur_end is None or cur_end <= now))
+        floating: dict[str, bool] = {}
+        fl = frozen
+        for e, sl in zip(self.events, slots):
+            if sl is None:
+                continue
+            if e.hard_start is not None:
+                fl = False
+            floating[e.uid] = fl
         for c in cds:
             c["remaining"] = c["at"] - now
+            c["paused"] = c.get("source") == "playlist" and floating.get(c.get("uid", ""), False)
 
         stats = {
             "output": {**self.output.stats(), "kbps": round(self._rate["kbps"]), "fps": round(self._rate["fps"], 1),
@@ -600,6 +618,7 @@ class Engine:
             "countdowns": sorted(cds, key=lambda c: c["at"]),
             "alarms": list(self.alarms.values()), "checks": self.checks, "stats": stats,
             "meters": self._last_meters, "live_inputs": [s.name for s in self.lives.values()],
+            "tech_slate": {"since": self.tech_since, "text": self.tech_text} if self.tech_since else None,
         }
 
     # ------------------------------------------------------------- commands
@@ -732,6 +751,31 @@ class Engine:
         self.resume_idx = None
         self.log.add("CONTROL", "RETURN to playlist")
         self._advance_to(idx, force=True, note="return from live")
+
+    def tech_slate(self, on: bool, text: str | None = None) -> None:
+        """Emergency "technical difficulties" slate. Overrides the output immediately;
+        automation keeps running underneath, so releasing it returns to whatever
+        should be on air by then."""
+        if on:
+            if self.tech_since is None:
+                self.tech_since = time.time()
+            self.tech_text = text or self.tech.DEFAULT_TEXT
+            self.tech.set_on_air(True, text)
+            self.log.add("TECH", f"TECHNICAL DIFFICULTIES slate ON AIR: '{self.tech_text}'", "error")
+            self._raise_alarm("tech", "error", "Technical difficulties slate is on air")
+            return
+        if self.tech_since is None:
+            return
+        self.tech.set_on_air(False)
+        start, self.tech_since = self.tech_since, None
+        end = time.time()
+        self.asrun.write(start=start, end=end, uid="TECH", title=self.tech_text or "", kind="slate",
+                         category="tech", source="tech slate", status="complete",
+                         note="emergency slate; automation continued underneath")
+        self._clear_alarm("tech")
+        back = self.cur_ev.title if self.cur_ev else ("slate" if self.slate.on_air else "-")
+        self.log.add("TECH", f"technical difficulties slate RELEASED after {fmt_tc(end - start)}; back to: {back}")
+        self.tech_text = None
 
     def scte_out(self, duration: float, preroll: float = 0.0) -> int:
         return self._scte_out(duration, preroll, "manual")

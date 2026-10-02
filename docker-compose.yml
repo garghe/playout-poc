@@ -7,13 +7,14 @@ services:
       - "9000:9000/udp"   # SRT programme output (listener)
       - "9001:9001/udp"   # SRT live input LIVE-1 (listener, used by "Go live")
       - "9002:9002/udp"   # SRT live input LIVE-2 (listener, used by the sample playlist)
+      - "9003:9003/udp"   # SRT live input LIVE-3 (listener, Big Buck Bunny test loop)
     volumes:
       - ./media:/app/media
       - ./data:/app/data   # as-run logs
     environment:
       PLAYOUT_TZ: Europe/London
 
-  # Two test SRT encoders feeding LIVE-1 and LIVE-2, so both inputs have signal.
+  # Test SRT encoders feeding LIVE-1, LIVE-2 and LIVE-3 (Big Buck Bunny loop), so all inputs have signal.
   # Run without them:  docker compose up playout
   testfeeds:
     build: .              # same image as playout (built once, from cache)

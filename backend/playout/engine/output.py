@@ -219,4 +219,5 @@ class Output:
         return {"clients": self.gateway.callers, "srt": self.gateway.summary(),
                 "gateway_restarts": self.gateway.restarts, "bytes_out": self.bytes_out, "frames": self.frames,
                 "luma": round(self.luma, 1), "uptime": round(time.time() - self.started),
-                "repeated_frames": ROUTER.repeated, "audio_underruns": ROUTER.underruns}
+                "repeated_frames": ROUTER.repeated, "dropped_frames": ROUTER.dropped,
+                "audio_underruns": ROUTER.underruns}

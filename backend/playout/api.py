@@ -6,12 +6,13 @@ import contextlib
 import io
 import json
 import logging
+import re
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -210,6 +211,19 @@ async def c_return():
     return {"ok": True}
 
 
+class TechReq(BaseModel):
+    on: bool
+    text: str | None = None
+
+
+@app.post("/api/control/tech")
+async def c_tech(req: TechReq):
+    if req.text is not None and len(req.text) > 120:
+        raise HTTPException(400, "text too long (max 120 characters)")
+    await run(engine.tech_slate, req.on, req.text)
+    return {"ok": True}
+
+
 @app.post("/api/alarms/clear")
 async def c_clear_alarms():
     await run(engine.clear_alarms)
@@ -288,6 +302,28 @@ async def get_asrun_csv():
     if not path.exists():
         return StreamingResponse(io.BytesIO(b"no as-run entries today\n"), media_type="text/plain")
     return FileResponse(path, media_type="text/csv", filename=path.name)
+
+
+# ---------------------------------------------------------------- VLC link
+def _output_port() -> int:
+    m = re.search(r":(\d+)", CONFIG.output_srt.split("//", 1)[-1])
+    return int(m.group(1)) if m else 9000
+
+
+@app.get("/api/output.m3u")
+async def output_m3u(request: Request):
+    """A one-entry playlist that opens the programme output in VLC (double-click the download)."""
+    host = request.url.hostname or "127.0.0.1"
+    body = ("#EXTM3U\n#EXTVLCOPT:network-caching=1000\n"
+            "#EXTINF:-1,Playout POC - programme output\n"
+            f"srt://{host}:{_output_port()}\n")
+    return Response(body, media_type="audio/x-mpegurl",
+                    headers={"Content-Disposition": 'attachment; filename="playout-output.m3u"'})
+
+
+@app.get("/api/output-url")
+async def output_url(request: Request):
+    return {"url": f"srt://{request.url.hostname or '127.0.0.1'}:{_output_port()}"}
 
 
 # -------------------------------------------------------------- websocket

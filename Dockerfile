@@ -27,6 +27,6 @@ COPY --from=ui /ui/dist ui/dist
 
 # Sample media is generated at first start if the media volume is empty.
 ENV PATH=/venv/bin:$PATH PLAYOUT_MEDIA_DIR=/app/media PLAYOUT_DATA_DIR=/app/data
-EXPOSE 8080/tcp 9000/udp 9001/udp 9002/udp
+EXPOSE 8080/tcp 9000/udp 9001/udp 9002/udp 9003/udp
 WORKDIR /app/backend
 CMD ["sh", "-c", "[ -n \"$(ls -A /app/media 2>/dev/null)\" ] || /app/scripts/make_sample_media.sh /app/media; exec python -m playout"]

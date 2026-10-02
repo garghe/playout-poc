@@ -215,3 +215,16 @@ tr.st-error td { background: #2a1012; }
 .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #1d2a3a; border: 1px solid var(--blue); padding: 8px 16px; border-radius: 6px; z-index: 10; max-width: calc(100vw - 32px); }
 .toast.err { background: var(--red-bg); border-color: var(--red); }
 .cd-big.in-break { background: #2a1f08; border-color: var(--amber); } .cd-big.in-break .cd-time { color: var(--amber); }
+
+/* emergency "technical difficulties" slate */
+.tech-btn { background: #7a0d12; color: #fff; border: 2px solid #ff4d55; border-radius: 8px; padding: 9px 18px;
+  font-weight: 800; letter-spacing: .06em; font-size: 14px; cursor: pointer; box-shadow: 0 0 0 0 rgba(229,72,77,.6); }
+.tech-btn:hover { background: #9b111a; }
+.tech-btn.active { background: #ff4d55; color: #1a0003; border-color: #fff; animation: techpulse 1s infinite; }
+@keyframes techpulse { 0% { box-shadow: 0 0 0 0 rgba(255,77,85,.7); } 70% { box-shadow: 0 0 0 14px rgba(255,77,85,0); } 100% { box-shadow: 0 0 0 0 rgba(255,77,85,0); } }
+.app.tech-on { outline: 4px solid #ff4d55; outline-offset: -4px; border-radius: 10px; }
+.fallback-badge.tech { background: #ff4d55; color: #fff; }
+@media (max-width: 720px) { .tech-btn { width: 100%; order: 10; } }
+.cd-list li b.paused, .cd-big.paused .cd-time { color: var(--muted) !important; }
+.vlc-links { display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; text-transform: none; letter-spacing: 0; }
+.btn.vlc { background: #3a2203; border-color: #ff8800; color: #ffa53a; font-weight: 700; }

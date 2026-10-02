@@ -13,7 +13,7 @@ SIZE="${SIZE:-1920x1080}"
 FONT="$(fc-match -f '%{file}' 'DejaVu Sans:bold' 2>/dev/null || echo /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf)"
 exec ffmpeg -hide_banner -loglevel warning -re \
   -f lavfi -i "smptehdbars=size=$SIZE:rate=25" \
-  -f lavfi -i "sine=frequency=$FREQ:sample_rate=48000,volume=0.25,aformat=channel_layouts=stereo" \
+  -f lavfi -i "sine=frequency=$FREQ:sample_rate=48000,volume=0.65,aformat=channel_layouts=stereo" \
   -vf "drawtext=fontfile=$FONT:text='$LABEL':fontsize=h/11:fontcolor=white:borderw=5:x=(w-tw)/2:y=h*0.25,\
 drawtext=fontfile=$FONT:text='%{localtime\:%H\\\\\:%M\\\\\:%S}':fontsize=h/15:fontcolor=yellow:borderw=4:x=(w-tw)/2:y=h*0.45" \
   -c:v libx264 -preset ultrafast -tune zerolatency -g 25 -b:v 4M -pix_fmt yuv420p \

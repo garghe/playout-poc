@@ -10,7 +10,8 @@ function urgency(rem: number) {
 }
 
 export function Countdowns({ state, now, onError }: { state: State | null; now: number; onError: (e: unknown) => void }) {
-  const cds = (state?.countdowns ?? []).map((c) => ({ ...c, rem: c.at - now }));
+  // paused countdowns use the server's frozen value instead of ticking locally
+  const cds = (state?.countdowns ?? []).map((c) => ({ ...c, rem: c.paused ? c.remaining : c.at - now }));
   const brk = cds.find((c) => c.key === "break");
   const rest = cds.filter((c) => c !== brk);
   const tz = state?.tz ?? "Europe/London";
@@ -35,10 +36,10 @@ export function Countdowns({ state, now, onError }: { state: State | null; now: 
           <div className="muted small">programme resumes {clock(breakEnd, tz)}{brk ? ` · then ${brk.label.replace("Next break: ", "")} in ${cd(brk.rem)}` : ""}</div>
         </div>
       ) : (
-        <div className={`cd-big ${brk ? urgency(brk.rem) : ""}`}>
-          <div className="cd-label">NEXT BREAK</div>
+        <div className={`cd-big ${brk && !brk.paused ? urgency(brk.rem) : ""} ${brk?.paused ? "paused" : ""}`}>
+          <div className="cd-label">NEXT BREAK{brk?.paused ? " · PAUSED" : ""}</div>
           <div className="cd-time mono">{brk ? cd(brk.rem) : "—"}</div>
-          <div className="muted small">{brk ? `${brk.label.replace("Next break: ", "")} · ${clock(brk.at, tz)}` : "no break scheduled"}</div>
+          <div className="muted small">{brk ? (brk.paused ? `${brk.label.replace("Next break: ", "")} · after ${state?.mode === "live" ? "live override" : "hold"}` : `${brk.label.replace("Next break: ", "")} · ${clock(brk.at, tz)}`) : "no break scheduled"}</div>
         </div>
       )}
       <ul className="cd-list">
@@ -48,8 +49,10 @@ export function Countdowns({ state, now, onError }: { state: State | null; now: 
             <span className={`chip ${c.source === "manual" ? "chip-manual" : ""}`}>{c.category}</span>
             <span className="cd-name" title={c.label}>{c.label}</span>
             {c.action && c.action !== "none" && <span className="chip chip-action">{c.action}</span>}
-            <span className="mono cd-at">{clock(c.at, tz)}</span>
-            <b className="mono">{c.fired ? "NOW" : cd(c.rem)}</b>
+            <span className="mono cd-at">{c.paused ? "paused" : clock(c.at, tz)}</span>
+            <b className={`mono ${c.paused ? "paused" : ""}`} title={c.paused ? "frozen until you return to the playlist / release hold" : undefined}>
+              {c.fired ? "NOW" : `${c.paused ? "⏸ " : ""}${cd(c.rem)}`}
+            </b>
             {c.source === "manual" && (
               <button className="x" title="remove" onClick={() => api(`/countdowns/${c.key}`, undefined, "DELETE").catch(onError)}>×</button>
             )}

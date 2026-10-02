@@ -21,6 +21,8 @@ No authentication. This is an MVP / proof of concept.
 | **As-run log** | What actually went to air, with frame-accurate times and status (complete / truncated / interrupted / error / fallback). Daily CSV in `data/asrun/`, downloadable from the UI. |
 | **Fallback slate** | If a live feed has no signal or drops, or a file fails, a slate goes on air automatically. When the signal returns, the live feed comes back. The slate also fills gaps before hard starts. |
 | **Manual control** | Start (from any item) / Stop, Take next, Hold (stop auto-advance), Skip/unskip, Go live (live override) / Return to playlist. |
+| **Technical difficulties slate** | Big red button in the top bar. One click puts a "We are experiencing technical difficulties / Please stay tuned" slate on air immediately. Automation keeps running underneath, so **Release** returns to whatever should be on air at that moment. Raises an alarm and is written to the as-run log. |
+| **Watch in VLC** | Button on the programme output panel. Downloads a one-line `.m3u` that opens the SRT output in VLC. Also offers a `vlc://` link and copy-URL. |
 | **Pre-air checks** | Missing/unreadable media, media shorter than planned, no audio, gaps and overlaps around hard starts. |
 | **Loudness & alarms** | Alarms for black, silence, loudness over -20 LUFS short-term, fallback on air and failed items. |
 | **Stats for nerds** | Live numbers (output bitrate/fps, SRT callers/RTT/loss, repeated frames, audio underruns, input signal and bitrate). Filterable event log: source changes, SCTE markers, breaks, SRT connects, alarms, preroll, operator actions. |
@@ -35,8 +37,9 @@ docker compose up --build
 This starts two containers:
 
 * **playout**: the engine and UI. Sample media is generated into `./media` on first start (takes about a minute).
-* **testfeeds**: two test SRT encoders feeding the live inputs, so both show signal straight away:
-  LIVE-1 "STUDIO B" (1 kHz tone) and LIVE-2 "FOOTBALL" (440 Hz tone), 720p25. They reconnect automatically.
+* **testfeeds**: test SRT encoders feeding the live inputs, so they all show signal straight away:
+  LIVE-1 "STUDIO B" (1 kHz tone) and LIVE-2 "FOOTBALL" (440 Hz tone), 720p25, plus LIVE-3: a looping
+  **Big Buck Bunny** clip (`samples/live/bbb_loop.ts`, streamed without re-encoding). They reconnect automatically.
   To run without them (e.g. with a real encoder): `docker compose up playout`.
 
 I have not been able to test the Docker image build in my environment; the native setup below has been tested.
@@ -70,7 +73,11 @@ For UI development, run `npm run dev` in `ui/` (http://localhost:5173). It proxi
 The programme output is an **SRT listener on UDP port 9000** (MPEG-TS: H.264 High 1080p25
 ~6 Mb/s, AAC-LC stereo 192 kb/s, SCTE-35 on PID 500). Players connect as SRT callers:
 
-* **VLC 3.0+**: *Media → Open Network Stream…* → `srt://<server-ip>:9000` → *Play*.
+* **From the UI**: click **▶ Watch in VLC** on the programme output panel and open the downloaded
+  `playout-output.m3u` (double-click it; VLC opens the stream with 1 s network caching).
+  Browsers can't launch `srt://` addresses directly, which is why it's a small playlist file. The `vlc://` link works
+  where that handler is registered (e.g. VLC on iOS/Android). The URL button copies `srt://…:9000`.
+* **VLC 3.0+ manually**: *Media → Open Network Stream…* → `srt://<server-ip>:9000` → *Play*.
   From the command line: `vlc srt://127.0.0.1:9000`.
   If playback stutters, raise the network caching: *Show more options → Caching* to 500–1000 ms,
   or `vlc --network-caching=1000 srt://127.0.0.1:9000`.
@@ -97,6 +104,7 @@ A player that joins mid-GOP may log a few "non-existing PPS" errors until the ne
 |-------|----------------|---------|
 | LIVE-1 | `srt://:9001?mode=listener` | Always present (`PLAYOUT_DEFAULT_LIVE`). **Go live** button, breaking news countdowns. |
 | LIVE-2 | `srt://:9002?mode=listener` | Present from startup (`PLAYOUT_EXTRA_LIVE`, comma-separated list for more). The sample playlist's live item. |
+| LIVE-3 | `srt://:9003?mode=listener` | Present from startup. Big Buck Bunny loop from the test feeds (`scripts/send_file_srt.sh`). |
 | per playlist | any other `srt://` URI in a playlist | Created when the playlist is loaded |
 
 **"no signal" means nothing is sending to that input.** The inputs are SRT *listeners*: an encoder
@@ -105,6 +113,9 @@ A player that joins mid-GOP may log a few "non-existing PPS" errors until the ne
 Send a feed from any SRT encoder in caller mode (MPEG-TS, H.264/HEVC/MPEG-2 + AAC/MP2/AC-3).
 Test signal: `scripts/send_test_srt.sh <port> "<label>"` (env `HOST`, `FREQ`, `SIZE`). For both inputs at once
 with auto-reconnect: `scripts/test_feeds.sh` (this is what the `testfeeds` container runs).
+To loop any file into an input: prepare it with `scripts/make_bbb_loop.sh <clip.mp4> <out.ts>`
+(converts it to 1080p25 with a 1 s GOP and adds a tone if the clip is silent), then
+`scripts/send_file_srt.sh <port> <out.ts>`.
 From another machine, point the encoder at `srt://<playout-host>:9001` (or `:9002`), caller mode.
 A live input with no video for 1.5s (`PLAYOUT_LIVE_LOSS_S`) counts as "signal lost". While on air, that triggers the fallback slate.
 
@@ -133,7 +144,10 @@ Key design choices:
 * **One pipeline per source + a router.** Each source decodes in its own pipeline, ending in appsinks.
   The router passes on only the on-air source. A clock-paced thread pushes exactly one frame and 40 ms of audio
   per tick into the output, so cuts are clean and the output never stalls or changes format.
-  The repeated-frame and audio-underrun counters in the stats show how clean the cuts are.
+  Frames and audio go through a small jitter buffer (primed with 80 ms at each cut, capped at 240 ms),
+  and live inputs are paced by their own timestamps. This absorbs network and decoder bursts: a cut costs
+  about 2 repeated frames and 1–2 audio underruns, with none in between.
+  The repeated/dropped-frame and audio-underrun counters in the stats show how clean the output is.
   (GStreamer's `inter*` elements were tried first. They wipe the shared audio format whenever any
   source stops, which silenced the output after a cut.)
 * **SRT in separate gateway processes.** libsrt 1.5 deadlocked inside the main process (epoll mutex) when
@@ -157,7 +171,9 @@ backend/playout/
   engine/srtgw.py  gateway supervisor;  gateway.py  the SRT gateway process
   asrun.py, eventlog.py, api.py (REST + WebSocket), config.py
 ui/src/            React UI (Preview, AudioMeters, Countdowns, Controls, Playlist, Alarms, NerdLog)
-scripts/           make_sample_media.sh, send_test_srt.sh, scte_sniff.py
+scripts/           make_sample_media.sh, send_test_srt.sh, test_feeds.sh, send_file_srt.sh,
+                   make_bbb_loop.sh, scte_sniff.py
+samples/live/      bbb_loop.ts (LIVE-3 test signal)
 ```
 
 ### API (all JSON, no auth)
@@ -173,6 +189,8 @@ scripts/           make_sample_media.sh, send_test_srt.sh, scte_sniff.py
 | POST | `/api/control/hold` | `{"on": true}` |
 | POST | `/api/control/skip`, `/api/control/cursor` | `{"uid": "B01/S101"}` |
 | POST | `/api/control/live` | `{"input": "LIVE-1"}` |
+| POST | `/api/control/tech` | `{"on": true, "text": null}` (technical difficulties slate) |
+| GET | `/api/output.m3u`, `/api/output-url` | VLC playlist / SRT URL of the programme output |
 | POST | `/api/scte/out` | `{"duration": 30, "preroll": 0}` |
 | POST | `/api/scte/in` | `{"event_id": null, "preroll": 0}` |
 | POST | `/api/countdowns` | `{"label", "category", "seconds" or "at": "HH:MM", "action": "none|go_live|take_next|scte", "live_input"}` |
@@ -188,7 +206,7 @@ scripts/           make_sample_media.sh, send_test_srt.sh, scte_sniff.py
 | `PLAYOUT_HTTP_PORT` | 8080 | UI/API |
 | `PLAYOUT_OUTPUT_SRT` | `srt://:9000?mode=listener` | programme output (any srtsink URI, e.g. caller mode to a remote) |
 | `PLAYOUT_DEFAULT_LIVE` | `srt://:9001?mode=listener` | always-on LIVE-1 input |
-| `PLAYOUT_EXTRA_LIVE` | `srt://:9002?mode=listener` | more inputs created at startup (comma-separated) |
+| `PLAYOUT_EXTRA_LIVE` | `srt://:9002?mode=listener,srt://:9003?mode=listener` | more inputs created at startup (comma-separated) |
 | `PLAYOUT_VIDEO_KBPS` / `PLAYOUT_X264_PRESET` | 6000 / superfast | encoder |
 | `PLAYOUT_SCTE_PID` | 500 | |
 | `PLAYOUT_TZ` | Europe/London | hard start and display times |
@@ -211,10 +229,18 @@ live with late signal, signal loss and fallback, go-live countdown, hold/take/sk
 
 ## Known limitations (MVP)
 
-* Cuts are timed by a 20 ms software tick and are not genlocked. Expect ±1 frame accuracy, with an occasional repeated frame at a cut.
+* Cuts are timed by a 20 ms software tick and are not genlocked. Expect ±1 frame accuracy, with about 2 repeated frames at a cut.
+* While a live override or Hold is active, the timeline can't advance, so follow-on countdowns show **paused** (frozen)
+  values. Items with a hard start keep counting down.
 * Live audio/video sync follows the incoming feed. There is no A/V delay compensation.
 * Only one programme output and one channel. Stereo audio only. No subtitles or graphics overlay.
 * No authentication, no redundancy (main/backup), and engine state is in memory (the as-run log is on disk).
 * SCTE-35 is `splice_insert` only (no `time_signal`/segmentation descriptors). `auto_return` is not set,
   so the engine sends an explicit splice IN at the end of each break.
 * The preview is a 640×360 JPEG stream at 10 fps with no audio (meters show the audio). Use VLC for full-quality monitoring.
+
+## Credits
+
+`samples/live/bbb_loop.ts` is derived from *Big Buck Bunny* © 2008 Blender Foundation | www.bigbuckbunny.org,
+licensed under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). It was re-encoded and trimmed, with a
+label and a tone added. The credit is burned into the picture.

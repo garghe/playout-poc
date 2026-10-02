@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -20,9 +21,9 @@ class Config:
     # Always-available live input for manual "Go Live" (breaking news etc.)
     default_live: str = os.environ.get("PLAYOUT_DEFAULT_LIVE", "srt://:9001?mode=listener")
     # More live inputs created at startup (comma separated), so they show signal status before
-    # any playlist is loaded. The default matches the sample playlist's live item (LIVE-2).
+    # any playlist is loaded. LIVE-2 (:9002) is the sample playlist's live item, LIVE-3 (:9003) the BBB loop.
     extra_live: tuple[str, ...] = tuple(u.strip() for u in os.environ.get(
-        "PLAYOUT_EXTRA_LIVE", "srt://:9002?mode=listener").split(",") if u.strip())
+        "PLAYOUT_EXTRA_LIVE", "srt://:9002?mode=listener,srt://:9003?mode=listener").split(",") if u.strip())
     # internal localhost UDP ports between the engine and the SRT gateway processes
     udp_base: int = int(os.environ.get("PLAYOUT_UDP_BASE", "19000"))
     video_bitrate_kbps: int = int(os.environ.get("PLAYOUT_VIDEO_KBPS", "6000"))
@@ -41,3 +42,8 @@ class Config:
 
 
 CONFIG = Config()
+
+# Make process-local time (e.g. the slate clocks drawn by GStreamer) match PLAYOUT_TZ,
+# even in a container that runs in UTC.
+os.environ["TZ"] = str(CONFIG.tz)
+time.tzset()
