@@ -1,13 +1,26 @@
 services:
   playout:
     build: .
+    image: playout-poc
     ports:
       - "8080:8080/tcp"   # UI + API
       - "9000:9000/udp"   # SRT programme output (listener)
       - "9001:9001/udp"   # SRT live input LIVE-1 (listener, used by "Go live")
-      - "9002:9002/udp"   # SRT live input used by the sample playlist
+      - "9002:9002/udp"   # SRT live input LIVE-2 (listener, used by the sample playlist)
     volumes:
       - ./media:/app/media
       - ./data:/app/data   # as-run logs
     environment:
       PLAYOUT_TZ: Europe/London
+
+  # Two test SRT encoders feeding LIVE-1 and LIVE-2, so both inputs have signal.
+  # Run without them:  docker compose up playout
+  testfeeds:
+    build: .              # same image as playout (built once, from cache)
+    image: playout-poc
+    depends_on: [playout]
+    environment:
+      HOST: playout
+      SIZE: 1280x720
+    command: ["/app/scripts/test_feeds.sh"]
+    restart: unless-stopped

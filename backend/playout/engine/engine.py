@@ -82,6 +82,8 @@ class Engine:
         self.slate.start()
         self._slate_on("Off air - automation stopped")
         self._ensure_live(CONFIG.default_live, DEFAULT_LIVE_NAME)
+        for uri in CONFIG.extra_live:
+            self._ensure_live(uri)
         GLib.timeout_add(TICK_MS, self._tick)
         GLib.timeout_add(100, self._meters_tick)
         GLib.timeout_add(250, self._state_tick)

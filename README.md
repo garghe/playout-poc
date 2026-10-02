@@ -32,7 +32,13 @@ docker compose up --build
 # open http://localhost:8080
 ```
 
-Sample media is generated into `./media` on first start (takes about a minute).
+This starts two containers:
+
+* **playout**: the engine and UI. Sample media is generated into `./media` on first start (takes about a minute).
+* **testfeeds**: two test SRT encoders feeding the live inputs, so both show signal straight away:
+  LIVE-1 "STUDIO B" (1 kHz tone) and LIVE-2 "FOOTBALL" (440 Hz tone), 720p25. They reconnect automatically.
+  To run without them (e.g. with a real encoder): `docker compose up playout`.
+
 I have not been able to test the Docker image build in my environment; the native setup below has been tested.
 
 ## Quick start (native, Ubuntu 24.04)
@@ -54,9 +60,10 @@ For UI development, run `npm run dev` in `ui/` (http://localhost:5173). It proxi
 1. Open http://localhost:8080 → **Playlist → Load sample… → playlist.json**, then **▶ Start**.
 2. Watch the output in VLC (below). The sample has three breaks (with SCTE-35), a 4:3 programme
    (pillarboxed), and a live football item with a hard start 2m30s after loading.
-3. Feed the live item: `scripts/send_test_srt.sh 9002 FOOTBALL`. Without it, the fallback slate covers the live slot.
-4. Try **+ Manual → Breaking news** (a countdown that goes live on LIVE-1 at zero) while sending
-   `scripts/send_test_srt.sh 9001 BREAKING`. Then **↩ Return to playlist**.
+3. The live item uses LIVE-2. With Docker the `testfeeds` container already feeds it. Natively, run
+   `scripts/test_feeds.sh`. Without a feed, the fallback slate covers the live slot.
+4. Try **+ Manual → Breaking news**: a countdown that goes live on LIVE-1 ("STUDIO B") at zero.
+   Then **↩ Return to playlist**.
 
 ## Watching the output in VLC
 
@@ -88,11 +95,17 @@ A player that joins mid-GOP may log a few "non-existing PPS" errors until the ne
 
 | Input | URI (listener) | Used by |
 |-------|----------------|---------|
-| LIVE-1 | `srt://:9001?mode=listener` | Always present. **Go live** button, breaking news countdowns. |
-| per playlist | whatever the playlist says (sample: `:9002`) | `type: live` items |
+| LIVE-1 | `srt://:9001?mode=listener` | Always present (`PLAYOUT_DEFAULT_LIVE`). **Go live** button, breaking news countdowns. |
+| LIVE-2 | `srt://:9002?mode=listener` | Present from startup (`PLAYOUT_EXTRA_LIVE`, comma-separated list for more). The sample playlist's live item. |
+| per playlist | any other `srt://` URI in a playlist | Created when the playlist is loaded |
+
+**"no signal" means nothing is sending to that input.** The inputs are SRT *listeners*: an encoder
+(or the test feeds) must connect to them as an SRT *caller* and push MPEG-TS.
 
 Send a feed from any SRT encoder in caller mode (MPEG-TS, H.264/HEVC/MPEG-2 + AAC/MP2/AC-3).
-Test signal: `scripts/send_test_srt.sh <port> "<label>"`.
+Test signal: `scripts/send_test_srt.sh <port> "<label>"` (env `HOST`, `FREQ`, `SIZE`). For both inputs at once
+with auto-reconnect: `scripts/test_feeds.sh` (this is what the `testfeeds` container runs).
+From another machine, point the encoder at `srt://<playout-host>:9001` (or `:9002`), caller mode.
 A live input with no video for 1.5s (`PLAYOUT_LIVE_LOSS_S`) counts as "signal lost". While on air, that triggers the fallback slate.
 
 ## Architecture
@@ -175,6 +188,7 @@ scripts/           make_sample_media.sh, send_test_srt.sh, scte_sniff.py
 | `PLAYOUT_HTTP_PORT` | 8080 | UI/API |
 | `PLAYOUT_OUTPUT_SRT` | `srt://:9000?mode=listener` | programme output (any srtsink URI, e.g. caller mode to a remote) |
 | `PLAYOUT_DEFAULT_LIVE` | `srt://:9001?mode=listener` | always-on LIVE-1 input |
+| `PLAYOUT_EXTRA_LIVE` | `srt://:9002?mode=listener` | more inputs created at startup (comma-separated) |
 | `PLAYOUT_VIDEO_KBPS` / `PLAYOUT_X264_PRESET` | 6000 / superfast | encoder |
 | `PLAYOUT_SCTE_PID` | 500 | |
 | `PLAYOUT_TZ` | Europe/London | hard start and display times |

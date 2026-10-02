@@ -19,6 +19,10 @@ class Config:
     output_srt: str = os.environ.get("PLAYOUT_OUTPUT_SRT", "srt://:9000?mode=listener")
     # Always-available live input for manual "Go Live" (breaking news etc.)
     default_live: str = os.environ.get("PLAYOUT_DEFAULT_LIVE", "srt://:9001?mode=listener")
+    # More live inputs created at startup (comma separated), so they show signal status before
+    # any playlist is loaded. The default matches the sample playlist's live item (LIVE-2).
+    extra_live: tuple[str, ...] = tuple(u.strip() for u in os.environ.get(
+        "PLAYOUT_EXTRA_LIVE", "srt://:9002?mode=listener").split(",") if u.strip())
     # internal localhost UDP ports between the engine and the SRT gateway processes
     udp_base: int = int(os.environ.get("PLAYOUT_UDP_BASE", "19000"))
     video_bitrate_kbps: int = int(os.environ.get("PLAYOUT_VIDEO_KBPS", "6000"))
