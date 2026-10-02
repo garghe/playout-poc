@@ -17,7 +17,7 @@ from ..asrun import AsRunLog
 from ..config import CONFIG
 from ..eventlog import EventLog
 from ..playlist import Event, Playlist, fmt_tc
-from .gst import GLib
+from .gst import GLib, check_elements
 from .output import Output
 from .sources import FileSource, LiveSource, SlateSource, Source
 
@@ -62,6 +62,7 @@ class Engine:
         self.on_state: Callable[[dict], None] | None = None
         self.on_meters: Callable[[dict], None] | None = None
 
+        check_elements()
         self.output = Output(self._notify)
         self.slate = SlateSource(self._notify)
         self.lives: dict[str, LiveSource] = {}

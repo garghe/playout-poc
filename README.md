@@ -39,7 +39,7 @@ I have not been able to test the Docker image build in my environment; the nativ
 
 ```bash
 sudo apt install python3-venv python3-gst-1.0 gir1.2-gst-plugins-bad-1.0 gstreamer1.0-tools \
-  gstreamer1.0-plugins-{base,good,bad,ugly} gstreamer1.0-libav ffmpeg fonts-dejavu-core
+  gstreamer1.0-plugins-{base,good,bad,ugly} gstreamer1.0-libav gstreamer1.0-x ffmpeg fonts-dejavu-core
 python3 -m venv --system-site-packages .venv
 .venv/bin/pip install -r backend/requirements.txt
 scripts/make_sample_media.sh                 # test clips -> ./media
