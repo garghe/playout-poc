@@ -52,6 +52,8 @@ class Engine:
         self.checks: list[dict] = []
         self.scte_id = int(time.time()) % 100000
         self._break_scte: int | None = None
+        self._in_break: str | None = None
+        self._in_break_title = ""
         self._black_since: float | None = None
         self._silence_since: float | None = None
         self._last_meters: dict = {}
@@ -225,6 +227,7 @@ class Engine:
                 self._enter_fallback(f"no signal on {src.name}")
             how = f"input {src.name}"
 
+        self._break_transition(idx)
         self.cur, self.cur_ev, self.cur_src = idx, e, src
         self.cur_start = now
         self.cur_note = note
@@ -233,22 +236,35 @@ class Engine:
         self.log.add("SOURCE", f"ON AIR [{e.uid}] {e.title} | {e.kind}{'/' + e.category if e.category else ''} | "
                                f"{how} | dur {fmt_tc(dur) if dur else 'open'}",
                      data={"uid": e.uid, "kind": e.kind})
-        if e.kind == "spot" and e.break_first:
-            self.log.add("BREAK", f"break '{e.break_title}' started ({fmt_tc(e.break_duration)})")
-            if e.scte and e.break_duration:
-                self._break_scte = self._scte_out(e.break_duration, 0.0, f"break {e.break_id}")
+
+    def _break_transition(self, idx: int | None) -> None:
+        """Track entering/leaving an ad break by what actually goes on air
+        (robust to skipped spots, takes and live overrides)."""
+        e = self.events[idx] if idx is not None else None
+        new = e.break_id if e is not None and e.kind == "spot" else None
+        if self._in_break and new != self._in_break:
+            self.log.add("BREAK", f"break '{self._in_break_title}' ended")
+            if self._break_scte is not None:
+                self.output.splice_in(self._break_scte, 0.0)
+                self.log.add("SCTE35", f"queued IN #{self._break_scte} (end of break {self._in_break})")
+                self._break_scte = None
+            self._in_break = None
+        if new and new != self._in_break:
+            remaining = [x for x in self.events[idx:] if x.break_id == new
+                         and self.status.get(x.uid) != "skipped"]
+            durs = [schedule.planned_duration(x) for x in remaining]
+            total = sum(durs) if all(d is not None for d in durs) else None
+            self._in_break, self._in_break_title = new, e.break_title
+            self.log.add("BREAK", f"break '{e.break_title}' started: {len(remaining)} spots, "
+                                  f"{fmt_tc(total) if total else 'unknown duration'}")
+            if e.scte and total:
+                self._break_scte = self._scte_out(total, 0.0, f"break {new}")
 
     def _finish_current(self, status: str) -> None:
         e = self.cur_ev
         if e is None:
             return
         end = time.time()
-        if e.break_last and e.kind == "spot":
-            self.log.add("BREAK", f"break '{e.break_title}' ended")
-            if self._break_scte is not None:
-                self.output.splice_in(self._break_scte, 0.0)
-                self.log.add("SCTE35", f"queued IN #{self._break_scte} (end of break {e.break_id})")
-                self._break_scte = None
         if self.status.get(e.uid) != "error":
             self.status[e.uid] = "done" if status == "complete" else status
         note = self.cur_note + (f"; fallback: {self.fallback}" if self.fallback else "")
@@ -270,9 +286,11 @@ class Engine:
         self._advance_to(nxt, force, note)
 
     def _advance_to(self, nxt: int, force: bool = False, note: str = "") -> None:
+        nxt = self._next_index(nxt - 1)   # never put a skipped item on air
         if nxt >= len(self.events):
             self._release(self.cur_src)
             self.cur_src, self.cur = None, None
+            self._break_transition(None)
             self._slate_on("End of playlist")
             self.mode = "stopped"
             self.cursor = len(self.events)
@@ -283,6 +301,7 @@ class Engine:
             self._release(self.cur_src)
             self.cur_src, self.cur = None, None
             self.pending = nxt
+            self._break_transition(None)
             self._slate_on("Programmes will resume shortly")
             self.log.add("SOURCE", f"FILLER slate until hard start of [{e.uid}] {e.title} at "
                                    f"{self._clock(e.hard_start)}")
@@ -603,6 +622,7 @@ class Engine:
         self._release(self.cur_src)
         self.cur_src, self.cur, self.pending = None, None, None
         self.mode = "stopped"
+        self._break_transition(None)
         self._slate_on("Off air - automation stopped")
         self.log.add("CONTROL", "automation STOP - slate on air")
 
@@ -671,6 +691,7 @@ class Engine:
         elif self.resume_idx is None:
             self.resume_idx = self.cursor
         self._release(self.cur_src)
+        self._break_transition(None)
         self.cur, self.pending = None, None
         self.mode = "live"
         self.live_override = src

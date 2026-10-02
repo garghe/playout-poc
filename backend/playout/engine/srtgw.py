@@ -9,6 +9,17 @@ import time
 from pathlib import Path
 from typing import Callable
 
+import ctypes
+import signal
+
+_libc = ctypes.CDLL(None, use_errno=True)
+PR_SET_PDEATHSIG = 1
+
+
+def _die_with_parent() -> None:
+    # Linux: the gateway gets SIGTERM if the engine process dies (even on kill -9)
+    _libc.prctl(PR_SET_PDEATHSIG, signal.SIGTERM)
+
 BACKEND = Path(__file__).resolve().parents[2]
 
 
@@ -22,6 +33,7 @@ class Gateway:
         self.stats: dict = {}
         self.callers = 0
         self.restarts = 0
+        self._fails = 0
         self._proc: subprocess.Popen | None = None
         self._stop = False
         self._thread = threading.Thread(target=self._run, name=f"gw-{name}", daemon=True)
@@ -43,7 +55,8 @@ class Gateway:
         while not self._stop:
             self._proc = subprocess.Popen(
                 [sys.executable, "-m", "playout.gateway", *self.args], cwd=BACKEND,
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, preexec_fn=_die_with_parent)
+            started = time.time()
             for line in self._proc.stdout:
                 try:
                     ev = json.loads(line)
@@ -56,6 +69,8 @@ class Gateway:
                     self.callers = max(0, self.callers + (1 if ev["action"] == "connected" else -1))
                     self.notify(cat, f"{self.name}: caller {ev['action']} {ev.get('addr', '')}".rstrip()
                                 + (f" (callers: {self.callers})" if cat == "SRT-OUT" else ""), "info")
+                elif kind == "error" and self._fails:
+                    pass   # already reported this failure streak
                 elif kind in ("error", "warning"):
                     self.notify(cat, f"{self.name}: {ev.get('msg')}", "warn")
                 if self.on_event:
@@ -66,9 +81,12 @@ class Gateway:
             if self._stop:
                 break
             self.restarts += 1
-            if code not in (0, -15):
-                self.notify(cat, f"{self.name}: gateway exited ({code}), restarting", "warn")
-            time.sleep(0.5)
+            quick = time.time() - started < 3
+            self._fails = self._fails + 1 if quick else 0
+            if code not in (0, -15) and self._fails <= 1:
+                self.notify(cat, f"{self.name}: gateway exited ({code}), restarting"
+                            + (" - is the port already in use?" if quick else ""), "warn")
+            time.sleep(min(5.0, 0.5 * (2 ** self._fails)))
 
     def summary(self) -> dict:
         s = dict(self.stats)
