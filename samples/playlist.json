@@ -1,0 +1,32 @@
+{
+  "channel": "Demo Channel",
+  "items": [
+    {"id": "001", "title": "Opening Titles", "type": "programme", "category": "promo",
+     "source": "opening_titles.mp4"},
+    {"id": "002", "title": "Morning News", "type": "programme", "category": "news",
+     "source": "morning_news.mp4", "duration": "00:00:45:00"},
+    {"id": "B01", "title": "Break 1", "type": "break", "scte": true, "spots": [
+      {"id": "S101", "title": "Cola 10\"", "source": "spot_cola.mp4", "duration": 10},
+      {"id": "S102", "title": "Car 10\"", "source": "spot_car.mp4", "duration": 10},
+      {"id": "S103", "title": "Bank 10\"", "source": "spot_bank.mp4", "duration": 10}
+    ]},
+    {"id": "003", "title": "Wildlife Documentary (4:3)", "type": "programme", "category": "documentary",
+     "source": "documentary_4x3.mp4"},
+    {"id": "004", "title": "Match Preview", "type": "programme", "category": "football",
+     "source": "match_preview.mp4"},
+    {"id": "005", "title": "Premier League LIVE", "type": "live", "category": "football",
+     "source": "srt://:9002?mode=listener", "start_mode": "hard", "start": "+00:02:30", "duration": "00:01:30:00"},
+    {"id": "B02", "title": "Break 2", "type": "break", "scte": true, "spots": [
+      {"id": "S201", "title": "Insurance 10\"", "source": "spot_insurance.mp4", "duration": 10},
+      {"id": "S202", "title": "Cola 10\"", "source": "spot_cola.mp4", "duration": 10}
+    ]},
+    {"id": "006", "title": "Feature Film", "type": "programme", "category": "film",
+     "source": "feature_film.mp4"},
+    {"id": "B03", "title": "Break 3", "type": "break", "scte": true, "spots": [
+      {"id": "S301", "title": "Car 10\"", "source": "spot_car.mp4", "duration": 10},
+      {"id": "S302", "title": "Bank 10\"", "source": "spot_bank.mp4", "duration": 10}
+    ]},
+    {"id": "007", "title": "Late News (edit)", "type": "programme", "category": "news",
+     "source": "morning_news.mp4", "in": "00:00:10:00", "duration": "00:00:30:00"}
+  ]
+}

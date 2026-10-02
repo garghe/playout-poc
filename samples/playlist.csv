@@ -1,0 +1,11 @@
+id,title,type,category,source,start_mode,start,duration,in,scte
+001,Opening Titles,programme,promo,opening_titles.mp4,follow,,,,
+002,Morning News,programme,news,morning_news.mp4,follow,,00:00:30:00,,
+B01,Break 1,break,,,follow,,,,true
+S101,Cola,spot,,spot_cola.mp4,,,10,,
+S102,Bank,spot,,spot_bank.mp4,,,10,,
+003,Feature Film,programme,film,feature_film.mp4,follow,,,,
+004,Studio Live,live,news,srt://:9001?mode=listener,follow,,00:01:00:00,,
+B02,Break 2,break,,,follow,,,,true
+S201,Car,spot,,spot_car.mp4,,,10,,
+005,Match Preview,programme,football,match_preview.mp4,follow,,,,

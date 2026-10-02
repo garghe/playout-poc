@@ -1,0 +1,7 @@
+# System packages (apt) are also required: GStreamer 1.24 + plugins (base/good/bad/ugly/libav),
+# python3-gst-1.0 / gir1.2-gst-plugins-bad-1.0, ffmpeg. See README.
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart>=0.0.9
+numpy>=1.26
+scipy>=1.11
