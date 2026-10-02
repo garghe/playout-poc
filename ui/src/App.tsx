@@ -6,6 +6,7 @@ import { AudioMeters } from "./components/AudioMeters";
 import { Controls } from "./components/Controls";
 import { Countdowns } from "./components/Countdowns";
 import { NerdLog } from "./components/NerdLog";
+import { Outputs } from "./components/Outputs";
 import { Playlist } from "./components/Playlist";
 import { Preview } from "./components/Preview";
 
@@ -63,6 +64,7 @@ export default function App() {
         <Countdowns state={state} now={now} onError={onError} />
         <Playlist state={state} now={now} onError={onError} />
         <div className="side">
+          <Outputs state={state} />
           <Alarms state={state} onError={onError} />
           <NerdLog log={log} state={state} />
         </div>

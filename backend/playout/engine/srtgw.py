@@ -24,9 +24,12 @@ BACKEND = Path(__file__).resolve().parents[2]
 
 
 class Gateway:
+    module = "playout.gateway"
+
     def __init__(self, name: str, args: list[str], notify: Callable[[str, str, str], None],
-                 on_event: Callable[[dict], None] | None = None) -> None:
+                 on_event: Callable[[dict], None] | None = None, cat: str | None = None) -> None:
         self.name = name
+        self.cat = cat or ("SRT-OUT" if args[0] == "out" else "SRT-IN")
         self.args = args
         self.notify = notify
         self.on_event = on_event
@@ -51,10 +54,10 @@ class Gateway:
                 self._proc.kill()
 
     def _run(self) -> None:
-        cat = "SRT-OUT" if self.args[0] == "out" else "SRT-IN"
+        cat = self.cat
         while not self._stop:
             self._proc = subprocess.Popen(
-                [sys.executable, "-m", "playout.gateway", *self.args], cwd=BACKEND,
+                [sys.executable, "-m", self.module, *self.args], cwd=BACKEND,
                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, preexec_fn=_die_with_parent)
             started = time.time()
             for line in self._proc.stdout:
@@ -94,3 +97,47 @@ class Gateway:
         if callers:   # listener mode: report the first caller's numbers
             s.update(callers[0])
         return s
+
+
+class HlsPackagerProc(Gateway):
+    """Supervises the HLS packager process (playout/hls.py) and keeps its stats."""
+    module = "playout.hls"
+
+    def __init__(self, notify: Callable[[str, str, str], None]) -> None:
+        from ..config import CONFIG
+        self.dir = CONFIG.data_dir / "hls"
+        super().__init__("hls", [str(CONFIG.udp_base + 100), str(self.dir), str(CONFIG.hls_segment_s),
+                                 str(CONFIG.hls_window)], notify, self._event, cat="HLS")
+        self.hls: dict = {"segments": 0, "last_seq": None, "last_duration": None, "in_break": False,
+                          "cues": 0, "last_segment_at": None}
+
+    def _event(self, ev: dict) -> None:
+        kind = ev.get("event")
+        if kind == "started":
+            self.notify("HLS", f"packager started: {ev.get('segment_s')}s segments, window {ev.get('window')}, "
+                               f"/hls/master.m3u8", "info")
+        elif kind == "segment":
+            first = self.hls["segments"] == 0
+            self.hls.update(segments=self.hls["segments"] + 1, last_seq=ev["seq"],
+                            last_duration=ev["duration"], in_break=ev["in_break"], last_segment_at=time.time())
+            if first:
+                self.notify("HLS", f"first segment written (seq {ev['seq']}, {ev['duration']:.2f}s): stream is live",
+                            "info")
+        elif kind == "cue":
+            self.hls["cues"] += 1
+            if ev["type"] == "out":
+                self.notify("HLS", f"#EXT-X-CUE-OUT duration {ev['duration']:.1f}s (splice {ev['id']}) "
+                                   f"at segment {ev['seq']}", "info")
+            else:
+                how = "auto-return (duration elapsed)" if ev.get("auto") else "splice IN"
+                self.notify("HLS", f"#EXT-X-CUE-IN after {ev['actual']:.1f}s ({how}, splice {ev['id']}) "
+                                   f"at segment {ev['seq']}", "info")
+        elif kind == "error":
+            self.notify("HLS", f"packager error: {ev.get('msg')}", "warn")
+
+    def summary(self) -> dict:
+        h = dict(self.hls)
+        at = h.pop("last_segment_at")
+        h["age"] = round(time.time() - at, 1) if at else None
+        h["restarts"] = self.restarts
+        return h

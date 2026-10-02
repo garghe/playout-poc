@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { clock, kbps, uptime } from "../format";
 import type { LogEvent, State } from "../types";
 
-const CATS = ["SOURCE", "SCTE35", "BREAK", "SRT-IN", "SRT-OUT", "FALLBACK", "ALARM", "PREROLL", "CONTROL", "ASRUN", "COUNTDOWN", "PLAYLIST"];
+const CATS = ["SOURCE", "SCTE35", "BREAK", "HLS", "SRT-IN", "SRT-OUT", "FALLBACK", "ALARM", "PREROLL", "CONTROL", "ASRUN", "COUNTDOWN", "PLAYLIST"];
 
 /** "Stats for nerds": live engine numbers + a filterable, auto-scrolling event log. */
 export function NerdLog({ log, state }: { log: LogEvent[]; state: State | null }) {
@@ -33,6 +33,8 @@ export function NerdLog({ log, state }: { log: LogEvent[]; state: State | null }
         <Stat k="uptime" v={o ? uptime(o.uptime) : "-"} />
         <Stat k="cued" v={state?.stats.engine.prerolled.join(", ") || "-"} />
         <Stat k="scte pid" v={String(o?.scte_pid ?? "-")} />
+        {o?.hls && <Stat k="hls" warn={o.hls.age === null || o.hls.age > 20}
+          v={`seq ${o.hls.last_seq ?? "-"} · ${o.hls.last_duration ?? "-"}s · age ${o.hls.age ?? "-"}s · cues ${o.hls.cues}`} />}
         {state?.stats.live_inputs.map((l) => (
           <Stat key={l.name} k={l.name} warn={!l.signal}
             v={`${l.signal ? "●" : "○"} ${kbps(l.kbps)}${l["rtt-ms"] !== undefined ? ` · rtt ${l["rtt-ms"]}ms` : ""}${l["packets-received-lost"] ? ` · lost ${l["packets-received-lost"]}` : ""}${l.on_air ? " · ON AIR" : ""}`} />

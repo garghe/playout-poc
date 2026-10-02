@@ -22,7 +22,8 @@ No authentication. This is an MVP / proof of concept.
 | **Fallback slate** | If a live feed has no signal or drops, or a file fails, a slate goes on air automatically. When the signal returns, the live feed comes back. The slate also fills gaps before hard starts. |
 | **Manual control** | Start (from any item) / Stop, Take next, Hold (stop auto-advance), Skip/unskip, Go live (live override) / Return to playlist. |
 | **Technical difficulties slate** | Big red button in the top bar. One click puts a "We are experiencing technical difficulties / Please stay tuned" slate on air immediately. Automation keeps running underneath, so **Release** returns to whatever should be on air at that moment. Raises an alarm and is written to the as-run log. |
-| **Watch in VLC** | Button on the programme output panel. Downloads a one-line `.m3u` that opens the SRT output in VLC. Also offers a `vlc://` link and copy-URL. |
+| **HLS output (FAST)** | Live HLS at `http://<host>:8080/hls/master.m3u8`: exact 6 s segments (fixed 1 s GOP), `#EXT-X-PROGRAM-DATE-TIME`, SCTE-35 breaks as `#EXT-X-CUE-OUT` / `CUE-OUT-CONT` / `CUE-IN` **and** `#EXT-X-DATERANGE` with the SCTE-35 bytes, keyframe + segment boundary forced at every splice point. Ready to sit behind an SSAI service (e.g. AWS MediaTailor) as a FAST channel origin. |
+| **Outputs panel** | Full SRT and HLS URLs with **Copy URL** and **▶ Open in VLC** (downloads a one-line `.m3u`), live status (SRT callers, HLS segments, in-break), and an in-browser HLS monitor. |
 | **Pre-air checks** | Missing/unreadable media, media shorter than planned, no audio, gaps and overlaps around hard starts. |
 | **Loudness & alarms** | Alarms for black, silence, loudness over -20 LUFS short-term, fallback on air and failed items. |
 | **Stats for nerds** | Live numbers (output bitrate/fps, SRT callers/RTT/loss, repeated frames, audio underruns, input signal and bitrate). Filterable event log: source changes, SCTE markers, breaks, SRT connects, alarms, preroll, operator actions. |
@@ -68,15 +69,26 @@ For UI development, run `npm run dev` in `ui/` (http://localhost:5173). It proxi
 4. Try **+ Manual → Breaking news**: a countdown that goes live on LIVE-1 ("STUDIO B") at zero.
    Then **↩ Return to playlist**.
 
-## Watching the output in VLC
+## Outputs: SRT and HLS (watching in VLC)
 
-The programme output is an **SRT listener on UDP port 9000** (MPEG-TS: H.264 High 1080p25
-~6 Mb/s, AAC-LC stereo 192 kb/s, SCTE-35 on PID 500). Players connect as SRT callers:
+The same encoded programme (H.264 High 1080p25 ~6 Mb/s, AAC-LC stereo 192 kb/s, SCTE-35 on PID 500)
+is delivered two ways. Both URLs are shown in full in the UI's **Outputs** panel:
 
-* **From the UI**: click **▶ Watch in VLC** on the programme output panel and open the downloaded
-  `playout-output.m3u` (double-click it; VLC opens the stream with 1 s network caching).
-  Browsers can't launch `srt://` addresses directly, which is why it's a small playlist file. The `vlc://` link works
-  where that handler is registered (e.g. VLC on iOS/Android). The URL button copies `srt://…:9000`.
+| Output | URL | Use |
+|--------|-----|-----|
+| SRT | `srt://127.0.0.1:9000` | Contribution/monitoring, low latency (~0.5 s). SRT listener: players connect as callers. |
+| HLS | `http://127.0.0.1:8080/hls/master.m3u8` | FAST / OTT distribution, CDN- and SSAI-friendly (~15–20 s latency, normal for 6 s segments). |
+
+Replace `127.0.0.1` with the server's address when watching from another machine. The UI shows `127.0.0.1`
+instead of `localhost` because macOS may resolve `localhost` to IPv6, which the IPv4 SRT listener and Docker's
+UDP port mapping don't answer.
+
+* **From the UI**: in the **Outputs** panel click **▶ Open in VLC** next to SRT or HLS, then double-click the
+  downloaded `.m3u` (VLC opens it with 1 s network caching). Browsers can't launch `srt://` addresses directly,
+  which is why it's a small playlist file. **Copy URL** copies the full address. **▶ Play here** plays the HLS
+  output in the page (needs a browser with H.264: Chrome, Safari, Edge) and shows the delay behind live.
+* **VLC with the HLS URL**: *Media → Open Network Stream…* → `http://127.0.0.1:8080/hls/master.m3u8`.
+* Verified with VLC 3.0.20: two simultaneous SRT players and one HLS player, all decoding 1080p H.264 + AAC.
 * **VLC 3.0+ manually**: *Media → Open Network Stream…* → `srt://<server-ip>:9000` → *Play*.
   From the command line: `vlc srt://127.0.0.1:9000`.
   If playback stutters, raise the network caching: *Show more options → Caching* to 500–1000 ms,
@@ -97,6 +109,26 @@ gst-launch-1.0 -q srtsrc uri="srt://127.0.0.1:9000?mode=caller" ! fdsink fd=1 | 
 
 (Use a raw capture like this. Remuxing with `ffmpeg -c copy` drops the SCTE-35 data stream.)
 A player that joins mid-GOP may log a few "non-existing PPS" errors until the next keyframe (≤ 1 s). That's expected.
+
+### Using it as a FAST channel origin
+
+Point your SSAI / FAST service at `http://<host>:8080/hls/master.m3u8` as the content origin (behind a CDN).
+Ad breaks from the playlist (and manual **Splice OUT/IN**) appear in the playlist as:
+
+```
+#EXT-X-PROGRAM-DATE-TIME:2026-10-02T22:26:47.747Z
+#EXT-X-DATERANGE:ID="splice-79955",START-DATE="2026-10-02T22:26:47.747Z",PLANNED-DURATION=30.000,SCTE35-OUT=0xFC3025…
+#EXT-X-CUE-OUT:DURATION=30.000
+#EXTINF:6.000,
+seg_1790979964.ts
+#EXT-X-CUE-OUT-CONT:ElapsedTime=6.000,Duration=30.000
+…
+#EXT-X-DATERANGE:ID="splice-79955",START-DATE="…",END-DATE="…",DURATION=30.000,SCTE35-IN=0xFC3020…
+#EXT-X-CUE-IN
+```
+
+AWS MediaTailor, for example, reads either style, and the break starts exactly on a segment boundary.
+The SCTE-35 PID is also kept inside the segments.
 
 ## Live inputs
 
@@ -133,10 +165,10 @@ A live input with no video for 1.5s (`PLAYOUT_LIVE_LOSS_S`) counts as "signal lo
             │                                                                   │ preview    │
             │  WebSocket: state 4 Hz · meters 10 Hz · log · JPEG preview 10 fps ◄┘ meters    │
             └──────▲───────────────────────────────────────────────────────┬───────────────┘
-                   │ localhost UDP (TS)                                     │ localhost UDP (TS)
-            ┌──────┴───────┐                                        ┌──────▼───────┐
- SRT in  ──►│ SRT gateway  │ (one per live input)                   │ SRT gateway  │──► SRT out :9000
-            └──────────────┘                                        └──────────────┘
+                   │ localhost UDP (TS)                     localhost UDP (TS) │ (same TS, teed)
+            ┌──────┴───────┐                                ┌──────────────┐  │  ┌──────────────┐
+ SRT in  ──►│ SRT gateway  │ (one per live input)    SRT ◄──│ SRT gateway  │◄─┴─►│ HLS packager │──► /hls/*.m3u8, *.ts
+            └──────────────┘                         :9000  └──────────────┘     └──────────────┘    (served on :8080)
 ```
 
 Key design choices:
@@ -155,6 +187,10 @@ Key design choices:
   (`playout/gateway.py`) that talks to the engine over localhost UDP and reports caller and stats events as JSON.
   A gateway problem can't stop playout, and gateways die with the engine.
 * **Preroll.** The next file is cued in PAUSED 3s (`PLAYOUT_PREROLL_S`) before its start, and seeked to its in point.
+* **HLS packager as its own process** (`playout/hls.py`). It reads the finished TS, so HLS and SRT are frame-identical
+  and carry the same SCTE-35. GStreamer's `hlssink2` can't write SCTE-35 cues into playlists, so segmenting is done
+  here: cut on keyframes at 6 s and at every splice point. The encoder uses a fixed 1 s GOP (no scene-cut keyframes)
+  and is asked for an extra IDR at each splice time, so ad breaks always start on a fresh segment.
   The cut happens on the 20 ms scheduler tick, which is under one frame of jitter.
 
 ### Code map
@@ -168,7 +204,8 @@ backend/playout/
   engine/router.py on-air router (fixed-cadence frame/audio pump)
   engine/output.py encoder + TS mux + SCTE-35, preview JPEG, meters, black detect
   engine/loudness.py  EBU R128 meter (BS.1770 K-weighting, gating)
-  engine/srtgw.py  gateway supervisor;  gateway.py  the SRT gateway process
+  engine/srtgw.py  supervisor for the SRT gateways and the HLS packager
+  gateway.py       the SRT gateway process;  hls.py  the HLS packager process
   asrun.py, eventlog.py, api.py (REST + WebSocket), config.py
 ui/src/            React UI (Preview, AudioMeters, Countdowns, Controls, Playlist, Alarms, NerdLog)
 scripts/           make_sample_media.sh, send_test_srt.sh, test_feeds.sh, send_file_srt.sh,
@@ -190,7 +227,9 @@ samples/live/      bbb_loop.ts (LIVE-3 test signal)
 | POST | `/api/control/skip`, `/api/control/cursor` | `{"uid": "B01/S101"}` |
 | POST | `/api/control/live` | `{"input": "LIVE-1"}` |
 | POST | `/api/control/tech` | `{"on": true, "text": null}` (technical difficulties slate) |
-| GET | `/api/output.m3u`, `/api/output-url` | VLC playlist / SRT URL of the programme output |
+| GET | `/api/output-url` | `{"srt": "srt://…:9000", "hls": "http://…/hls/master.m3u8"}` |
+| GET | `/api/output.m3u?kind=srt\|hls` | one-line VLC playlist for that output |
+| GET | `/hls/master.m3u8`, `/hls/stream.m3u8`, `/hls/seg_N.ts` | live HLS (CORS `*`, playlists not cached) |
 | POST | `/api/scte/out` | `{"duration": 30, "preroll": 0}` |
 | POST | `/api/scte/in` | `{"event_id": null, "preroll": 0}` |
 | POST | `/api/countdowns` | `{"label", "category", "seconds" or "at": "HH:MM", "action": "none|go_live|take_next|scte", "live_input"}` |
@@ -214,7 +253,9 @@ samples/live/      bbb_loop.ts (LIVE-3 test signal)
 | `PLAYOUT_LIVE_LOSS_S` | 1.5 | live signal-loss threshold |
 | `PLAYOUT_BLACK_ALARM_S` / `PLAYOUT_SILENCE_ALARM_S` / `PLAYOUT_SILENCE_DBFS` / `PLAYOUT_LOUDNESS_MAX` | 5 / 5 / -60 / -20 | alarms |
 | `PLAYOUT_MEDIA_DIR` / `PLAYOUT_DATA_DIR` | `./media` / `./data` | |
-| `PLAYOUT_UDP_BASE` | 19000 | internal engine↔gateway ports (19000 out, 19001+ inputs) |
+| `PLAYOUT_UDP_BASE` | 19000 | internal engine↔gateway ports (19000 SRT out, 19001+ inputs, 19100 HLS packager) |
+| `PLAYOUT_HLS` | 1 | set to 0 to disable the HLS output |
+| `PLAYOUT_HLS_SEGMENT_S` / `PLAYOUT_HLS_WINDOW` | 6 / 10 | segment length (s) / segments in the live playlist |
 
 ## Tests
 
@@ -233,7 +274,9 @@ live with late signal, signal loss and fallback, go-live countdown, hold/take/sk
 * While a live override or Hold is active, the timeline can't advance, so follow-on countdowns show **paused** (frozen)
   values. Items with a hard start keep counting down.
 * Live audio/video sync follows the incoming feed. There is no A/V delay compensation.
-* Only one programme output and one channel. Stereo audio only. No subtitles or graphics overlay.
+* One channel. Stereo audio only. No subtitles or graphics overlay.
+* HLS is a single 1080p rendition in MPEG-TS segments. A production FAST channel would add an ABR ladder
+  (e.g. 1080p/720p/540p) and often CMAF/fMP4 segments. Segments are served by the app itself; put a CDN in front for scale.
 * No authentication, no redundancy (main/backup), and engine state is in memory (the as-run log is on disk).
 * SCTE-35 is `splice_insert` only (no `time_signal`/segmentation descriptors). `auto_return` is not set,
   so the engine sends an explicit splice IN at the end of each break.

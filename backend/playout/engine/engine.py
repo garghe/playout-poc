@@ -489,6 +489,13 @@ class Engine:
 
     def _stats_tick(self) -> bool:
         now = time.time()
+        if CONFIG.hls_enabled:
+            h = self.output.hls.summary()
+            limit = CONFIG.hls_segment_s * 3
+            if h["age"] is not None and h["age"] > limit:
+                self._raise_alarm("hls", "error", f"HLS output stalled: no segment for {h['age']:.0f}s")
+            elif h["age"] is not None:
+                self._clear_alarm("hls")
         r = self._rate
         dt = max(0.001, now - r["t"])
         r["kbps"] = (self.output.bytes_out - r["bytes"]) * 8 / 1000 / dt

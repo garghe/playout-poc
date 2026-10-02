@@ -228,3 +228,15 @@ tr.st-error td { background: #2a1012; }
 .cd-list li b.paused, .cd-big.paused .cd-time { color: var(--muted) !important; }
 .vlc-links { display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; text-transform: none; letter-spacing: 0; }
 .btn.vlc { background: #3a2203; border-color: #ff8800; color: #ffa53a; font-weight: 700; }
+
+/* outputs panel */
+.outputs .out-row { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; border-bottom: 1px dotted #2a2f37; }
+.outputs .out-row:last-of-type { border-bottom: none; }
+.out-head { display: flex; align-items: center; gap: 8px; }
+.out-url { width: 100%; font-size: 12px; color: #fff; background: #0a0b0d; }
+.out-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip.out-srt { background: #10283f; color: var(--blue); }
+.chip.out-hls { background: #0f2e1f; color: #4cc38a; }
+.ok { color: #4cc38a; } .warnc { color: var(--amber); }
+.hls-monitor video { width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 4px; margin-top: 6px; }
+.cat-HLS { color: #4cc38a !important; }

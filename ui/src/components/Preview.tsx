@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import type { State } from "../types";
 import { tc } from "../format";
 
@@ -49,29 +48,12 @@ export function Preview({ src, state, now }: { src: string | null; state: State 
   );
 }
 
-/** Ways to open the SRT programme output in VLC. Browsers can't launch srt:// directly,
- *  so the main button downloads a one-line .m3u that VLC opens on double-click. */
+/** Compact shortcut; full SRT/HLS URLs are in the Outputs panel. */
 function VlcLinks() {
-  const [url, setUrl] = useState(`srt://${location.hostname}:9000`);
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    fetch("/api/output-url").then((r) => r.json()).then((d) => d.url && setUrl(d.url)).catch(() => undefined);
-  }, []);
-  const copy = () => {
-    navigator.clipboard?.writeText(url).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    });
-  };
   return (
     <span className="vlc-links">
-      <a className="btn small vlc" href="/api/output.m3u" download title="Download a playlist that opens the output in VLC (double-click it)">
-        ▶ Watch in VLC
-      </a>
-      <a className="btn small ghost" href={`vlc://${url}`} title="Open directly (works where the vlc:// link handler is installed, e.g. VLC on iOS/Android)">vlc://</a>
-      <button className="btn small ghost mono" onClick={copy} title="Copy the stream URL, then in VLC: File → Open Network…">
-        {copied ? "copied ✓" : url}
-      </button>
+      <a className="btn small vlc" href="/api/output.m3u?kind=srt" download
+        title="Downloads a playlist file: double-click it to open the SRT output in VLC">▶ Watch in VLC</a>
     </span>
   );
 }

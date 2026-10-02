@@ -119,6 +119,8 @@ export interface State {
       audio_underruns: number;
       gateway_restarts: number;
       srt: Record<string, number>;
+      hls: { segments: number; last_seq: number | null; last_duration: number | null; in_break: boolean;
+             cues: number; age: number | null; restarts: number } | null;
     };
     live_inputs: LiveInputStats[];
     engine: { prerolled: string[]; slate_on_air: boolean };

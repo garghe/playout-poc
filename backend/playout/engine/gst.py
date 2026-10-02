@@ -3,7 +3,8 @@ import gi
 
 gi.require_version("Gst", "1.0")
 gi.require_version("GstMpegts", "1.0")
-from gi.repository import GLib, Gst, GstMpegts  # noqa: E402
+gi.require_version("GstVideo", "1.0")
+from gi.repository import GLib, Gst, GstMpegts, GstVideo  # noqa: E402
 
 Gst.init(None)
 GstMpegts.initialize()
@@ -35,4 +36,4 @@ def check_elements() -> None:
         raise RuntimeError(f"missing GStreamer elements: {', '.join(missing)}. Install: apt install {pkgs}")
 
 
-__all__ = ["GLib", "Gst", "GstMpegts", "check_elements"]
+__all__ = ["GLib", "Gst", "GstMpegts", "GstVideo", "check_elements"]

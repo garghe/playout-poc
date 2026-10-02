@@ -304,26 +304,62 @@ async def get_asrun_csv():
     return FileResponse(path, media_type="text/csv", filename=path.name)
 
 
-# ---------------------------------------------------------------- VLC link
+# --------------------------------------------------------- outputs / VLC links
 def _output_port() -> int:
     m = re.search(r":(\d+)", CONFIG.output_srt.split("//", 1)[-1])
     return int(m.group(1)) if m else 9000
 
 
-@app.get("/api/output.m3u")
-async def output_m3u(request: Request):
-    """A one-entry playlist that opens the programme output in VLC (double-click the download)."""
-    host = request.url.hostname or "127.0.0.1"
-    body = ("#EXTM3U\n#EXTVLCOPT:network-caching=1000\n"
-            "#EXTINF:-1,Playout POC - programme output\n"
-            f"srt://{host}:{_output_port()}\n")
-    return Response(body, media_type="audio/x-mpegurl",
-                    headers={"Content-Disposition": 'attachment; filename="playout-output.m3u"'})
+def _host(request: Request) -> str:
+    h = request.url.hostname or "127.0.0.1"
+    # macOS may resolve "localhost" to IPv6 (::1) while the SRT listener / Docker UDP
+    # mapping is IPv4 only, so hand out the IPv4 loopback instead.
+    return "127.0.0.1" if h in ("localhost", "::1") else h
+
+
+def _urls(request: Request) -> dict:
+    host = _host(request)
+    port = request.url.port
+    http = f"{request.url.scheme}://{host}{':' + str(port) if port else ''}"
+    return {"srt": f"srt://{host}:{_output_port()}",
+            "hls": f"{http}/hls/master.m3u8" if CONFIG.hls_enabled else None}
 
 
 @app.get("/api/output-url")
 async def output_url(request: Request):
-    return {"url": f"srt://{request.url.hostname or '127.0.0.1'}:{_output_port()}"}
+    u = _urls(request)
+    return {"url": u["srt"], **u}
+
+
+@app.get("/api/output.m3u")
+async def output_m3u(request: Request, kind: str = "srt"):
+    """A one-entry playlist that opens an output in VLC (double-click the download)."""
+    u = _urls(request)
+    if kind not in u or not u[kind]:
+        raise HTTPException(404, "unknown output")
+    body = ("#EXTM3U\n#EXTVLCOPT:network-caching=1000\n"
+            f"#EXTINF:-1,Playout POC - programme output ({kind.upper()})\n{u[kind]}\n")
+    return Response(body, media_type="audio/x-mpegurl",
+                    headers={"Content-Disposition": f'attachment; filename="playout-{kind}.m3u"'})
+
+
+# ------------------------------------------------------------------- HLS
+HLS_NAME = re.compile(r"^[A-Za-z0-9_.-]+\.(m3u8|ts)$")
+
+
+@app.get("/hls/{name}")
+async def hls_file(name: str):
+    """Live HLS output (FAST). Playlists are never cached; segments are immutable."""
+    if not HLS_NAME.match(name):
+        raise HTTPException(404)
+    path = CONFIG.data_dir / "hls" / name
+    if not path.is_file():
+        raise HTTPException(404, "not available yet" if name.endswith(".m3u8") else "segment expired")
+    playlist = name.endswith(".m3u8")
+    headers = {"Access-Control-Allow-Origin": "*",
+               "Cache-Control": "no-cache, no-store" if playlist else "public, max-age=3600, immutable"}
+    return FileResponse(path, media_type="application/vnd.apple.mpegurl" if playlist else "video/mp2t",
+                        headers=headers)
 
 
 # -------------------------------------------------------------- websocket

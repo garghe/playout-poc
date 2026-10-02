@@ -26,6 +26,10 @@ class Config:
         "PLAYOUT_EXTRA_LIVE", "srt://:9002?mode=listener,srt://:9003?mode=listener").split(",") if u.strip())
     # internal localhost UDP ports between the engine and the SRT gateway processes
     udp_base: int = int(os.environ.get("PLAYOUT_UDP_BASE", "19000"))
+    # HLS output (FAST): packaged from the programme TS, served at /hls/master.m3u8
+    hls_enabled: bool = os.environ.get("PLAYOUT_HLS", "1") not in ("0", "false", "no")
+    hls_segment_s: float = float(os.environ.get("PLAYOUT_HLS_SEGMENT_S", "6"))
+    hls_window: int = int(os.environ.get("PLAYOUT_HLS_WINDOW", "10"))
     video_bitrate_kbps: int = int(os.environ.get("PLAYOUT_VIDEO_KBPS", "6000"))
     x264_preset: str = os.environ.get("PLAYOUT_X264_PRESET", "superfast")
     scte_pid: int = int(os.environ.get("PLAYOUT_SCTE_PID", "500"))
